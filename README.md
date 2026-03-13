@@ -1,4 +1,4 @@
-# 🚌 KMB Bus Arrival Skill v1.0.0
+# 🚌 KMB Bus Arrival Skill v1.1.0
 
 Real-time KMB bus arrival information for Hong Kong using the official government transport API.
 
@@ -33,3 +33,8 @@ kmb-bus-arrival/
 
 
 Github link: https://github.com/StevenHo1394/kmb-bus-arrival
+
+##  Version History
+
+v1.1.0: Security Fixes
+v1.0.0: Initial Release
