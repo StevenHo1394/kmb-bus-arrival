@@ -31,3 +31,5 @@ kmb-bus-arrival/
 - ✅ Chinese & English stop names
 - ✅ Automatic retry on errors
 
+
+Github link: https://github.com/StevenHo1394/kmb-bus-arrival
