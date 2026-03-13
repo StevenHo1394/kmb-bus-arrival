@@ -7,13 +7,13 @@ Real-time KMB bus arrival information for Hong Kong using the official governmen
 
 ## 📁 Package Structure
 
-
+<pre>
 kmb-bus-arrival/
-├── kmb_bus.py          (main executable)
-├── kmb_bus.sh          (shell wrapper)
-├── SKILL.md            (OpenClaw skill definition)
-├── README.md           (documentation)
-
+    ├── kmb_bus.py          (main executable)
+    ├── kmb_bus.sh          (shell wrapper)
+    ├── SKILL.md            (OpenClaw skill definition)
+    └── README.md           (documentation)
+</pre>
 
 ## 🚀 Quick Start
 
