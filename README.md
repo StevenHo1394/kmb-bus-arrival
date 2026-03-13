@@ -1,5 +1,5 @@
 markdown
-# 🚌 KMB Bus Arrival Skill v1.1.0
+# 🚌 KMB Bus Arrival Skill v1.0.0
 
 Real-time KMB bus arrival information for Hong Kong using the official government transport API.
 
@@ -21,8 +21,8 @@ kmb-bus-arrival/
 2. Copy `kmb-bus-arrival/` to your OpenClaw `skills/` directory
 3. Restart OpenClaw or reload skills
 4. Use the skill with commands like:
-   - `getRouteDirection E31`
-   - `getNextArrivals E31 I TW281`
+   - `getRouteDirection 182`
+   - `getNextArrivals 182 I ST871`
 
 ## 📊 Features
 
