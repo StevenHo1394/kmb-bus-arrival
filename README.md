@@ -32,11 +32,3 @@ kmb-bus-arrival/
 - ✅ Chinese & English stop names
 - ✅ Automatic retry on errors
 
-## 📦 Download
-
-File: `kmb-bus-arrival-v1.1.0.zip`
-
-Ready for Clawhub upload!
-
-
-This will render nicely on GitHub with emojis, code block for the tree, and clear sections.
