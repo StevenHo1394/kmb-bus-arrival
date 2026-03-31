@@ -17,7 +17,7 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 # Validation patterns
 ROUTE_PATTERN = re.compile(r'^[A-Za-z0-9]+$')
 DIRECTION_PATTERN = re.compile(r'^(O|I|outbound|inbound)$', re.IGNORECASE)
-STOP_ID_PATTERN = re.compile(r'^[A-Za-z0-9]+$')
+STOP_ID_PATTERN = re.compile(r'^[A-Fa-f0-9]{16}$')  # 16-character hex stop ID
 
 def validate_route(route: str):
     if not isinstance(route, str) or not ROUTE_PATTERN.match(route):
@@ -33,8 +33,11 @@ def validate_direction(direction: str) -> str:
     return d
 
 def validate_stop_id(stop_id: str):
-    if not isinstance(stop_id, str) or not STOP_ID_PATTERN.match(stop_id):
-        raise ValueError(f"Invalid stop ID format: '{stop_id}'")
+    if not isinstance(stop_id, str):
+        raise ValueError("Stop ID must be a string")
+    # Must be exactly 16 hex characters (uppercase acceptable)
+    if not (STOP_ID_PATTERN.match(stop_id) and len(stop_id) == 16):
+        raise ValueError(f"Stop ID must be a 16-character hex string (got '{stop_id}')")
 
 def validate_name(name: str):
     if not isinstance(name, str) or not (1 <= len(name) <= 100):
@@ -43,7 +46,7 @@ def validate_name(name: str):
 def cache_path(key):
     return os.path.join(CACHE_DIR, f"{key}.json")
 
-def load_cache(key, ttl_seconds=60):
+def load_cache(key, ttl_seconds=1800):  # 30 minutes default
     path = cache_path(key)
     if os.path.exists(path):
         if time.time() - os.path.getmtime(path) < ttl_seconds:
@@ -51,20 +54,27 @@ def load_cache(key, ttl_seconds=60):
                 return json.load(open(path))
             except:
                 pass
+        else:
+            # Delete stale cache file immediately
+            try: os.remove(path)
+            except: pass
     return None
 
 def save_cache(key, data):
     with open(cache_path(key), 'w') as f:
         json.dump(data, f, ensure_ascii=False)
 
-def curl_fetch(url, retries=3, delay=2):
-    """Fetch JSON with SSL verification and respecting proxy env."""
+def curl_fetch(url, retries=3, delay=1):
+    """Fetch JSON with fast retries (total elapsed < 5 seconds)"""
+    start = time.time()
     for attempt in range(1, retries+1):
         try:
             cmd = ["curl", "-s", "-S", "--http1.1", "-4",
                    "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                   "-H", "Accept: application/json", url]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                   "-H", "Accept: application/json",
+                   "--max-time", "2",  # per-attempt timeout 2s
+                   url]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
             if result.returncode != 0:
                 raise RuntimeError(f"curl error {result.returncode}: {result.stderr}")
             raw = result.stdout
@@ -73,9 +83,14 @@ def curl_fetch(url, retries=3, delay=2):
             return json.loads(raw)
         except Exception as e:
             if attempt < retries:
+                # Ensure we don't exceed 5 seconds total
+                elapsed = time.time() - start
+                if elapsed >= 4.5:  # give up if we're near 5s
+                    return {"error": "timeout", "attempts": attempt}
                 time.sleep(delay)
             else:
                 return {"error": str(e), "attempts": attempt}
+    return {"error": "max retries exceeded"}
 
 def bound_to_api_dir(bound):
     if bound == "O": return "outbound"
@@ -83,7 +98,7 @@ def bound_to_api_dir(bound):
     return bound
 
 def get_stop_map():
-    stops = load_cache("stops_all", ttl_seconds=3600)
+    stops = load_cache("stops_all")  # uses default 1800 sec (30 min)
     if stops is None:
         data = curl_fetch(f"{BASE}/stop")
         if "error" not in data:
@@ -182,7 +197,7 @@ def get_next_arrivals(route, direction, stop_id):
             except Exception:
                 arrivals.append(eta_str)
     if not arrivals:
-        stop_eta = curl_fetch(f"{BASE}/stop-eta/{stop_id}/1")
+        stop_eta = curl_fetch(f"{BASE}/stop-eta/{stop_id}")  # no /1
         if "error" not in stop_eta:
             items = stop_eta if isinstance(stop_eta, list) else stop_eta.get("data", [])
             filtered = [it for it in items if it.get("route") == route and it.get("dir") == direction]
@@ -205,7 +220,19 @@ def get_next_arrivals(route, direction, stop_id):
     }
     print(json.dumps(result, ensure_ascii=False))
 
+def purge_old_cache(ttl_seconds=1800):
+    now = time.time()
+    for f in os.listdir(CACHE_DIR):
+        path = os.path.join(CACHE_DIR, f)
+        if os.path.isfile(path) and now - os.path.getmtime(path) > ttl_seconds:
+            try:
+                os.remove(path)
+            except:
+                pass
+
 def main():
+    # Clean cache older than 30 minutes on every run
+    purge_old_cache(1800)
     if len(sys.argv) < 2:
         print(json.dumps({"error": "Missing subcommand"})); return
     cmd = sys.argv[1]

@@ -1,7 +1,9 @@
 ---
 name: kmb-bus-arrival
-description: Retrieve real-time KMB bus arrival information (route, stop, ETA) using the official Data Hub API. Provides up-to-date next bus times for any KMB route and stop.
-version: 1.1.0
+description: Retrieve real-time KMB bus arrival information (route, stop, ETA) using the official Data Hub API. Provides up-to-date next bus times for any KMB route and stop. v1.1.1: Security-hardened, 30-minute cache TTL, fast 3-retry (≤5s), strict 16-char stop ID validation.
+version: 1.1.1
+author: Steven Ho
+repository: https://github.com/StevenHo1394/kmb-bus-arrival
 tools:
   - name: getRouteDirection
     description: List available travel directions for a KMB route (e.g., inbound/outbound).
