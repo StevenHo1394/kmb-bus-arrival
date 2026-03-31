@@ -1,4 +1,4 @@
-# 🚌 KMB Bus Arrival Skill v1.1.3
+# 🚌 KMB Bus Arrival Skill v1.1.4
 
 Real-time KMB bus arrival information for Hong Kong using the official government transport API.
 
@@ -31,8 +31,8 @@ kmb-bus-arrival/
 - ✅ **No external dependencies** (Python stdlib only)
 - ✅ Security-hardened (LOW risk)
 - ✅ Supports all KMB routes
-- ✅ Human-friendly **plain text output** (Ready for WhatsApp)
-- ✅ Chinese & English stop names
+- ✅ Human-friendly **plain text output** for `getNextArrivals`; other tools return JSON
+- ✅ Chinese & English stop names; never exposes raw stop IDs
 
 
 **Author:** Steven Ho
@@ -43,14 +43,14 @@ kmb-bus-arrival/
 The `getNextArrivals` tool prints human-readable plain text:
 
 ```
-*68A outbound - 朗屏邨總站 (Long Ping Estate Bus Terminus)*
+*68A (To Destination)*
 
-Stop: *朗屏邨總站 (Long Ping Estate Bus Terminus)*
+    Stop: *Human Readable Name*
 
-Next arrivals:
-- 16:42 HKT
-- 16:56 HKT
-- 17:10 HKT
+    Next arrivals:
+    - 18:58 HKT
+    - 19:15 HKT
+    - 19:28 HKT
 ```
 
 If no arrivals: `- No active ETAs`
@@ -66,13 +66,13 @@ If no arrivals: `- No active ETAs`
 
 ## 📝 Version History
 
-**v1.1.3** (2026-03-31)
-- **Security hardening:** All user-facing outputs are plain text (except structured tools), no raw stop IDs exposed, error messages plain text, cache TTL strictly 30min, auto-purge.
-- **Consistency:** Fixed documentation/code mismatches; tool specifications now match actual behavior.
-- **UX:** Removed direction labels (“outbound”/“inbound”); multi-direction results are separate blocks with headers only.
-- **Auto-direction** and **alternate stop ID fallback** retained from prior.
-- Pure Python, no external dependencies; validation, timeouts, retries.
+**v1.1.4** (2026-03-31)
+- Fixed all documentation/code inconsistencies: getNextArrivals plain text, other tools JSON; no raw stop IDs in any user output; cache TTL 30min everywhere; error formats aligned.
+- Removed direction labels from multi-direction outputs.
+- Plain‑text errors for getNextArrivals; JSON errors for other tools.
+- Auto‑direction (`direction="auto"`) and alternate stop ID fallback retained.
 
+v1.1.3: Security hardening, consistency fixes, removed outbound/inbound labels.
 v1.1.2: Plain text output, flexible stop IDs, never shows raw stop IDs.
 v1.1.1: Metadata updates.
 v1.1.0: Security fixes, cache TTL 30min, validate stop id, fix stop-eta endpoint.

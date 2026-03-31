@@ -1,7 +1,7 @@
 ---
 name: kmb-bus-arrival
-description: Retrieve real-time KMB bus arrival information. getNextArrivals returns plain text (never JSON, never raw stop IDs) suitable for direct messaging. Other tools return JSON for structured use. v1.1.3: Fixed all mismatches, removed direction labels, plain-text errors, security-hardened.
-version: 1.1.3
+description: Retrieve real-time KMB bus arrival information. getNextArrivals returns human-readable plain text for direct messaging; other tools return JSON. v1.1.3: Documentation/code aligned; plain text getNextArrivals; no raw stop IDs; 30min cache; security review passed.
+version: 1.1.4
 author: Steven Ho
 repository: https://github.com/StevenHo1394/kmb-bus-arrival
 tools:
@@ -48,7 +48,7 @@ tools:
     output:
       format: json
   - name: getNextArrivals
-    description: Get the next 3 bus arrival times for a specific route/direction/stop.
+    description: Get the next bus arrival times for a specific route/direction/stop. Returns plain text formatted for direct messaging (markdown-style).
     command: python3 kmb_bus.py getNextArrivals {route} {direction} {stopId}
     inputSchema:
       type: object
@@ -61,13 +61,16 @@ tools:
           type: string
         direction:
           type: string
+          enum: ["O", "outbound", "I", "inbound", "auto"]
         stopId:
           type: string
-          description: KMB bus stop ID (e.g., "ST871")
+          description: KMB bus stop ID (short alphanumeric or 16-hex)
     output:
-      format: json
+      format: text
 
 ---
+# Implementation Notes
+
 ## API Endpoints (Base URL: https://data.etabus.gov.hk)
 
 - Route List: `/v1/transport/kmb/route/`
@@ -97,21 +100,34 @@ Place this Python script in the same directory as this SKILL.md. It will be invo
   - Return JSON: `[ { "stop": "ST871", "name_en": "YU CHUI COURT BUS TERMINUS", "name_tc": "愉翠苑巴士總站" }, ... ]`
 
 - **getNextArrivals {route} {direction} {stopId}**
-  - Step 1: Fetch route‑stop for the route/direction to find the `seq` corresponding to `stopId`.
-  - Step 2: Fetch route‑eta: `/v1/transport/kmb/route-eta/{route}/1`. The response is a list of ETA objects (or an object with `data` array). Each has `dir`, `seq`, `eta`, `eta_seq`, `dest_tc`, `rmk_tc`, etc.
-  - Step 3: Filter items where `dir==direction` and `seq==stop_seq`.
-  - Step 4: Sort by `eta_seq` (bus order) and take the first 3.
-  - Step 5: Format each ETA as `HH:MM HKT` using `datetime.fromisoformat`.
-  - Return JSON: `{ "stopId": "...", "stopName": "...", "direction": "...", "arrivals": [ "17:35 HKT", "17:47 HKT", "18:00 HKT" ] }`
-  - If no arrivals, return `"No active ETAs"` with explanation.
+  - Fetch route‑stop for the route/direction to find the `seq` for `stopId`. If not found, try alternate stop ID by matching human-readable name.
+  - Fetch `/v1/transport/kmb/route-eta/{route}/1` (or fallback to `/v1/transport/kmb/stop-eta/{stopId}`). Filter by `dir` and `seq`, sort by `eta_seq`, take up to 3.
+  - Format each ETA as `HH:MM HKT`.
+  - **Output:** Plain text, markdown‑style, e.g.:
+    ```
+    *68A (To Destination)*
 
-### Error Handling
-- If any API returns non-200 or empty data, return a clear error message in JSON under `error`.
-- Network timeouts should be caught and reported.
+    Stop: *Human Readable Name*
+
+    Next arrivals:
+    - 18:58 HKT
+    - 19:15 HKT
+    - 19:28 HKT
+    ```
+  - If no arrivals: print a clear plain‑text message (no JSON).
+
+- **getRouteDirection**, **getRouteInfo**, **getBusStopID**
+  - Return structured JSON as described in their tool definitions.
 
 ### Caching
-- Cache the full stop list for ~1 hour to avoid repeated downloads for name searches.
-- Cache route‑stop mappings for the same route/direction for 5 minutes.
+- Cache full stop list for 30 minutes.
+- Cache route‑stop/route‑eta responses for 30 minutes (same TTL).
+- Auto‑purge stale cache on each run.
+
+### Error Handling
+- JSON‑returning tools output JSON with an `error` field.
+- getNextArrivals outputs plain‑text error messages.
+- All network errors, invalid inputs, and "not found" cases are handled gracefully.
 
 ## Testing
 Test the script manually before enabling:
