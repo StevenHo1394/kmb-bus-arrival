@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
-KMB Bus Arrival Skill v1.1.4
-- Documentation/code aligned (all inconsistencies fixed)
-- Plain text output for getNextArrivals; never exposes raw stop IDs
-- Direction labels removed; multi-direction shown as separate blocks
-- Pure Python; no external deps; security-hardened
-- 30min cache TTL, auto-purge; retries 3× ≤5s
+KMB Bus Arrival Skill v1.1.5
+- Removed all caching (direct API calls)
+- Plain text output for getNextArrivals; other tools return JSON
 - Auto-direction + alternate stop ID fallback
+- Pure Python; security-hardened; no external deps
 """
 
 import json, sys, time, os, re, urllib.request, urllib.error
