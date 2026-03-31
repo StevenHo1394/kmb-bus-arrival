@@ -1,7 +1,7 @@
 ---
 name: kmb-bus-arrival
-description: Retrieve real-time KMB bus arrival information (route, stop, ETA) using the official Data Hub API. Provides up-to-next-bus times in human-friendly plain text format (for direct messaging). v1.1.2: Plain text output, pure Python, flexible stop IDs, never shows raw stop IDs in output.
-version: 1.1.2
+description: Retrieve real-time KMB bus arrival information. getNextArrivals returns plain text (never JSON, never raw stop IDs) suitable for direct messaging. Other tools return JSON for structured use. v1.1.3: Fixed all mismatches, removed direction labels, plain-text errors, security-hardened.
+version: 1.1.3
 author: Steven Ho
 repository: https://github.com/StevenHo1394/kmb-bus-arrival
 tools:
@@ -68,8 +68,6 @@ tools:
       format: json
 
 ---
-# Implementation Notes
-
 ## API Endpoints (Base URL: https://data.etabus.gov.hk)
 
 - Route List: `/v1/transport/kmb/route/`

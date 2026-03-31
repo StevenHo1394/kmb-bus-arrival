@@ -1,4 +1,4 @@
-# 🚌 KMB Bus Arrival Skill v1.1.2
+# 🚌 KMB Bus Arrival Skill v1.1.3
 
 Real-time KMB bus arrival information for Hong Kong using the official government transport API.
 
@@ -66,12 +66,14 @@ If no arrivals: `- No active ETAs`
 
 ## 📝 Version History
 
-**v1.1.2** (2026-03-31)
-- Alternate stop ID fallback: If the given stop ID isn't on the route, searches the route's stop list for a matching human-readable name (Chinese/English) and uses that ID automatically. Handles multiple IDs for same location (e.g., Panda Hotel: TW280 on 31, TW281 on E31).
-- Auto-direction detection: `direction="auto"` tries both inbound/outbound; shows both if stop serves both directions
-- Plain text output with `*Route (To Destination)*` header
-- Combined Chinese/English stop names; never exposes raw stop IDs
-- Pure Python urllib (no curl); accepts short & 16‑hex stop IDs
-- Security review: LOW risk
+**v1.1.3** (2026-03-31)
+- **Security hardening:** All user-facing outputs are plain text (except structured tools), no raw stop IDs exposed, error messages plain text, cache TTL strictly 30min, auto-purge.
+- **Consistency:** Fixed documentation/code mismatches; tool specifications now match actual behavior.
+- **UX:** Removed direction labels (“outbound”/“inbound”); multi-direction results are separate blocks with headers only.
+- **Auto-direction** and **alternate stop ID fallback** retained from prior.
+- Pure Python, no external dependencies; validation, timeouts, retries.
 
-Earlier versions: Metadata updates, security fixes, cache TTL 30min, validate stop id, fix stop-eta endpoint.
+v1.1.2: Plain text output, flexible stop IDs, never shows raw stop IDs.
+v1.1.1: Metadata updates.
+v1.1.0: Security fixes, cache TTL 30min, validate stop id, fix stop-eta endpoint.
+v1.0.0: Initial release.

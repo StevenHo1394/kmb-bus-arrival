@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-KMB Bus Arrival Skill v1.1.2
-- Human-friendly plain text output (no JSON)
-- Accepts both short alphanumeric (e.g., ST871) and 16-hex stop IDs
-- No external dependencies (Python stdlib only)
-- Strict input validation, SSL verification, timeouts
-- Cache TTL 30min, auto-purge
-- Retry logic: 3 attempts, total ≤5s
-- Security-hardened (LOW risk)
-- Never exposes raw stop IDs in user output
+KMB Bus Arrival Skill v1.1.3
+- Plain text output for getNextArrivals (no JSON) - never exposes raw stop IDs
+- Direction labels removed (multiple directions shown as separate blocks)
+- Pure Python; no external deps; security-hardened
+- 30min cache TTL, auto-purge
+- Retries 3× within ≤5s, timeouts enforced
+- Never exposes raw stop IDs; uses human-readable names only
+- Error messages are plain text (not JSON)
 """
 
 import json, sys, time, os, re, urllib.request, urllib.error
