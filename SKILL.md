@@ -1,12 +1,12 @@
 ---
 name: kmb-bus-arrival
-description: Retrieve real-time KMB bus arrival information. getNextArrivals returns plain text (markdown-style); other tools return JSON. v1.1.5: Removed all caching, simplified code; plain-text errors for getNextArrivals; aligned docs.
-version: 1.1.5
+description: Retrieve real-time KMB bus arrival information. getNextArrivals returns plain text; other tools return JSON.
+version: 1.1.6
 author: Steven Ho
 repository: https://github.com/StevenHo1394/kmb-bus-arrival
 tools:
   - name: getRouteDirection
-    description: List available travel directions for a KMB route (e.g., inbound/outbound). Returns JSON.
+    description: List available travel directions for a KMB route. Returns JSON.
     command: python3 kmb_bus.py getRouteDirection {route}
     inputSchema:
       type: object
@@ -14,7 +14,6 @@ tools:
       properties:
         route:
           type: string
-          description: KMB route number (e.g., "1", "5X", "N21")
     output:
       format: json
 
@@ -29,12 +28,12 @@ tools:
           type: string
         direction:
           type: string
-          description: "outbound" or "inbound"
+          enum: ["outbound", "inbound"]
     output:
       format: json
 
   - name: getBusStopID
-    description: Find bus stop ID(s) by name (Chinese or English). May return multiple matches. Returns JSON.
+    description: Find bus stop ID(s) by name (Chinese or English). Returns JSON.
     command: python3 kmb_bus.py getBusStopID {name}
     inputSchema:
       type: object
@@ -42,12 +41,11 @@ tools:
       properties:
         name:
           type: string
-          description: Bus stop name (partial or full, in Chinese or English)
     output:
       format: json
 
   - name: getNextArrivals
-    description: Get the next bus arrival times for a specific route/direction/stop. Returns plain text formatted for direct messaging.
+    description: Get the next bus arrival times for a specific route/direction/stop. Returns plain text.
     command: python3 kmb_bus.py getNextArrivals {route} {direction} {stopId}
     inputSchema:
       type: object
@@ -57,39 +55,32 @@ tools:
           type: string
         direction:
           type: string
-          enum: ["O", "outbound", "I", "inbound", "auto"]
+          enum: ["outbound", "inbound", "auto"]
         stopId:
           type: string
-          description: KMB bus stop ID (short alphanumeric like ST871 or 16-hex)
     output:
       format: text
 
-Implementation Notes:
+Implementation:
 
-- getNextArrivals prints plain text with markdown formatting. Example:
+- getNextArrivals output:
   ```
-  *68A (To Destination)*
+  *Route (To Destination)*
 
   Stop: *Human Readable Stop Name*
 
   Next arrivals:
-  - 18:58 HKT
-  - 19:15 HKT
+  - HH:MM HKT
+  - HH:MM HKT
   ```
-  If `direction="auto"` and the stop is served in both directions, multiple blocks are printed.
+  If direction="auto" and the stop is served in both directions, multiple blocks are printed.
 
-- Other tools (getRouteDirection, getRouteInfo, getBusStopID) return JSON structures.
+- Auto-direction: direction="auto" tries both inbound and outbound; reports whichever has the stop. If both, both are shown.
 
-- The skill uses the KMB Data Hub API directly (no caching). All calls are made with SSL verification and timeouts. Inputs are validated; route alphanumeric, stop ID 1–16 alphanumeric, direction one of allowed values.
+- Alternate stop ID fallback: If the given stop ID is not found on the route, the skill searches the route's stop list for a stop whose Chinese or English name matches the intended location and uses that stop's ID instead.
 
-- Auto-direction: `direction="auto"` tries both inbound and outbound; whichever has the stop will be reported. If the stop appears on both directions, both are included.
+- All tools except getNextArrivals return JSON.
 
-- Alternate stop ID fallback: If the given stop ID is not found on the route, the skill searches the route's stop list for a stop whose Chinese or English name matches the intended location (based on the provided stop ID's human-readable names) and uses that alternate ID automatically.
+- Errors: getNextArrivals prints human-readable messages; other tools return JSON with an `error` field.
 
-- No caching: every invocation fetches fresh data from the API.
-
-- Errors: getNextArrivals prints human-readable messages; other tools output JSON with an `error` field.
-
-- No external dependencies (Python standard library only).
-
-version: 1.1.5
+version: 1.1.6
