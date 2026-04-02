@@ -1,4 +1,4 @@
-# KMB Bus Arrival Skill v1.1.6
+# KMB Bus Arrival Skill v1.1.7
 
 Real-time KMB bus arrival information using the official Hong Kong Data Hub API.
 
@@ -35,12 +35,13 @@ The skill auto-detects alternate stop IDs if the given one doesn't match the rou
 
 ## Version
 
-**v1.1.6** (2026-04-01)
+**v1.1.7** (2026-04-02)
 - Full removal of caching — all API calls are fresh; docs aligned
 - Fixed code/docs consistency issues
 - Plain‑text errors for getNextArrivals; JSON errors for other tools
 - Auto‑direction and alternate stop ID fallback retained
 
+v1.1.6 — Full removal of caching; docs aligned; error handling fixes  
 v1.1.5 — Removed all caching (earlier attempt incomplete)  
 v1.1.4 — Documentation/code alignment; fixed inconsistencies  
 v1.1.3 — Security hardening, removed direction labels  

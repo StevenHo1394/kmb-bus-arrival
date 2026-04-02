@@ -1,7 +1,7 @@
 ---
 name: kmb-bus-arrival
 description: Retrieve real-time KMB bus arrival information. getNextArrivals returns plain text; other tools return JSON.
-version: 1.1.6
+version: 1.1.7
 author: Steven Ho
 repository: https://github.com/StevenHo1394/kmb-bus-arrival
 tools:
@@ -83,4 +83,9 @@ Implementation:
 
 - Errors: getNextArrivals prints human-readable messages; other tools return JSON with an `error` field.
 
-version: 1.1.6
+version: 1.1.7
+changes:
+  - Full removal of caching — all API calls are fresh
+  - Plain-text errors for getNextArrivals; JSON errors for other tools
+  - Auto-direction and alternate stop ID fallback retained
+  - Docs aligned with code
