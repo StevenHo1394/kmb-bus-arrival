@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KMB Bus Arrival Skill v1.1.8
+KMB Bus Arrival Skill v1.1.9
 - Cache for latest 100 {bus stop ID, bus stop name, bus route name, inbound/outbound direction} for better performance
 - Plain-text errors for getNextArrivals; JSON errors for other tools
 - Auto-direction + alternate stop ID fallback
@@ -8,35 +8,10 @@ KMB Bus Arrival Skill v1.1.8
 - Pure Python; security-hardened; no external deps
 """
 
-import json, sys, time, os, re, urllib.request, urllib.error
+import json, sys, time, re, urllib.request, urllib.error
+from datetime import datetime, timedelta
 
-# Simple in‑memory cache persisted to a hidden JSON file (up to 100 entries)
-CACHE_FILE = os.path.join(os.path.dirname(__file__), ".kmb_cache.json")
-CACHE_MAX = 100
-
-def load_cache():
-    try:
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return data
-    except Exception:
-        pass
-    return []
-
-def save_cache(cache):
-    try:
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(cache[:CACHE_MAX], f)
-    except Exception:
-        pass
-
-def add_to_cache(entry):
-    cache = load_cache()
-    # Remove existing duplicate of same stop ID
-    cache = [e for e in cache if e.get("stop_id") != entry.get("stop_id")]
-    cache.insert(0, entry)  # most recent at front
-    save_cache(cache)
+# Caching removed in v1.1.9 – all lookups are performed fresh via the API.
 from datetime import datetime
 
 BASE = "https://data.etabus.gov.hk/v1/transport/kmb"
@@ -172,21 +147,13 @@ def get_route_info(route, direction):
 
 def get_bus_stop_id(name):
     validate_name(name)
-    # First lookup cache
-    cache = load_cache()
+        # Fresh lookup – no cache used
     q = name.lower()
-    for e in cache:
-        if q in e.get("name_tc","").lower() or q in e.get("name_en","").lower():
-            print(json.dumps([e], ensure_ascii=False))
-            return
-    # If not cached, fetch fresh
     data = fetch_json(f"{BASE}/stop")
     if "error" in data:
         print(json.dumps({"error": data["error"]})); return
     stops = data.get("data", [])
     matches = [s for s in stops if q in s.get("name_tc","").lower() or q in s.get("name_en","").lower()]
-    if matches:
-        add_to_cache({"stop_id": matches[0]["stop"], "name_tc": matches[0]["name_tc"], "name_en": matches[0]["name_en"], "route": None, "direction": None})
     print(json.dumps(matches, ensure_ascii=False))
 
 def get_next_arrivals(route, direction, stop_id):
@@ -305,8 +272,9 @@ def get_next_arrivals(route, direction, stop_id):
         print()  # blank line after each block
     
     # Show current Hong Kong time at the end
-    import os
-    hkt_time = os.popen('TZ=Asia/Hong_Kong date +"%H:%M"').read().strip()
+    # Compute current Hong Kong time without invoking a shell
+    hkt_now = datetime.utcnow() + timedelta(hours=8)
+    hkt_time = hkt_now.strftime("%H:%M")
     print(f"(Current Time: {hkt_time} HKT)")
 
 def main():
