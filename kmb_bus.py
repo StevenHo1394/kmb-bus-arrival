@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-KMB Bus Arrival Skill v1.2.0 - Full implementation per spec
-- Follows steps 1-6 exactly for getArrival command
+KMB Bus Arrival Skill v1.2.1 - Complete rewrite per spec
+- Follows steps 1-6 exactly
 - Fresh API calls always (no caching)
-- Retries as specified
-- Plain text output for getArrival (matching getNextArrivals style)
+- No old commands (getRouteDirection, getRouteInfo, getBusStopID, getNextArrivals removed)
+- Only command: getArrival <route> <stop_name>
+- Plain text output matching spec format
 """
 
 import json, sys, time, re, urllib.request, urllib.error
@@ -12,34 +13,20 @@ from datetime import datetime, timedelta
 
 BASE = "https://data.etabus.gov.hk/v1/transport/kmb"
 
-# Validation patterns
-ROUTE_PATTERN = re.compile(r'^[A-Za-z0-9]+$')
-STOP_NAME_PATTERN = re.compile(r'^[A-Za-z0-9\u4e00-\u9fff\s\-]+$', re.UNICODE)
-
-def validate_route(route: str):
-    if not isinstance(route, str) or not ROUTE_PATTERN.match(route):
-        raise ValueError(f"Invalid route format: '{route}'")
-
-def validate_stop_name(name: str):
-    if not isinstance(name, str) or not (1 <= len(name) <= 100):
-        raise ValueError("Stop name must be 1-100 characters")
-    if not STOP_NAME_PATTERN.match(name):
-        raise ValueError(f"Invalid stop name format: '{name}'")
-
-def fetch_json(url, retries=3, total_timeout=5):
-    """Fetch JSON with retries using urllib. Total time budget ≤5s."""
+def fetch_json(url, retries=2, total_timeout=3):
+    """Fetch JSON with retries using urllib. Total time budget ≤3s."""
     start = time.time()
     delay = 0.5  # initial backoff
     req = urllib.request.Request(
         url,
         headers={'User-Agent': 'Mozilla/5.0 (OpenClaw kmb-bus-arrival)', 'Accept': 'application/json'}
     )
-    for attempt in range(1, retries+1):
+    for attempt in range(1, retries + 1):
         try:
             elapsed = time.time() - start
             remaining = total_timeout - elapsed
             if remaining <= 0:
-                return {"error": "timeout", "attempts": attempt-1}
+                return {"error": "timeout"}
             timeout = min(2.0, remaining)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read().decode('utf-8')
@@ -47,24 +34,21 @@ def fetch_json(url, retries=3, total_timeout=5):
                     raise ValueError("Empty response")
                 return json.loads(raw)
         except urllib.error.HTTPError as e:
-            return {"error": f"HTTP {e.code}: {e.reason}", "attempts": attempt}
-        except urllib.error.URLError as e:
-            err_str = str(e.reason) if hasattr(e, 'reason') else str(e)
+            return {"error": f"HTTP {e.code}"}
+        except urllib.error.URLError:
             if attempt < retries:
-                time.sleep(min(delay, remaining if 'remaining' in locals() else delay))
+                time.sleep(min(delay, remaining if remaining > 0 else delay))
                 delay *= 1.5
                 continue
-            return {"error": f"Network error: {err_str}", "attempts": attempt}
-        except Exception as e:
+            return {"error": "network error"}
+        except Exception:
             if attempt < retries:
                 elapsed = time.time() - start
-                if elapsed >= total_timeout - 0.5:
-                    return {"error": "timeout", "attempts": attempt}
-                time.sleep(min(delay, total_timeout - elapsed))
+                time.sleep(min(delay, total_timeout - elapsed if total_timeout - elapsed > 0 else delay))
                 delay *= 1.5
                 continue
-            return {"error": str(e), "attempts": attempt}
-    return {"error": "max retries exceeded"}
+            return {"error": "unknown error"}
+    return {"error": "max retries"}
 
 def get_hkt_now():
     """Return current Hong Kong time as string HH:MM HKT"""
@@ -72,177 +56,249 @@ def get_hkt_now():
     hkt = utc_now + timedelta(hours=8)
     return hkt.strftime("%H:%M HKT")
 
-def get_route_stops(route, direction, retries=2):
-    """Get stop IDs for a route/direction with retries. Returns list of stop dicts or None."""
-    url = f"{BASE}/route-stop/{route}/{direction}/1"
-    for attempt in range(retries + 1):
-        data = fetch_json(url, retries=1, total_timeout=2)
-        if "error" not in data:
-            stops = data.get("data", [])
-            if stops:
-                return stops
-        if attempt < retries:
-            time.sleep(0.3)
-    return None
-
-def get_all_stops():
-    """Get all bus stops (for name->ID mapping). Returns dict mapping stop ID to name info."""
-    data = fetch_json(f"{BASE}/stop", retries=2, total_timeout=3)
-    if "error" in data:
-        return {}
-    stops = data.get("data", [])
-    return {s["stop"]: {"name_en": s.get("name_en",""), "name_tc": s.get("name_tc","")} for s in stops}
-
-def find_stop_id_by_name_and_route(all_stops, route_stops_outbound, route_stops_inbound, stop_name):
+def get_arrival(route_input, stop_name):
     """
-    Find 16-char stop ID that matches stop_name and belongs to route.
-    Returns (stop_id, found_in_outbound, found_in_inbound) or (None, False, False).
+    Main function implementing steps 1-6 exactly per v1.2.1 spec.
     """
-    name_lower = stop_name.lower()
-    # First, collect candidate stop IDs from route stops
-    candidate_ids = set()
-    for s in (route_stops_outbound or []):
-        candidate_ids.add(s["stop"])
-    for s in (route_stops_inbound or []):
-        candidate_ids.add(s["stop"])
+    # Step 1: Validate and normalize inputs
+    route = route_input.upper()  # Convert to capital letters automatically
     
-    # Among candidate IDs, find one whose name matches stop_name
-    for stop_id in candidate_ids:
-        if stop_id not in all_stops:
-            continue
-        names = all_stops[stop_id]
-        name_en = names.get("name_en", "").lower()
-        name_tc = names.get("name_tc", "").lower()
-        if name_lower in name_en or name_lower in name_tc:
-            # Check which direction(s) it's in
-            in_outbound = any(s["stop"] == stop_id for s in (route_stops_outbound or []))
-            in_inbound = any(s["stop"] == stop_id for s in (route_stops_inbound or []))
-            return stop_id, in_outbound, in_inbound
-    return None, False, False
-
-def get_eta(route, stop_id, retries=2):
-    """Get ETA from /eta/{stop_id}/{route}/1. Returns list of ETA strings or None."""
-    url = f"{BASE}/eta/{stop_id}/{route}/1"
-    for attempt in range(retries + 1):
-        data = fetch_json(url, retries=1, total_timeout=2)
-        if "error" not in data:
-            items = data if isinstance(data, list) else data.get("data", [])
-            if items:
-                # Extract eta times
-                etas = []
-                for it in items[:3]:  # max 3 arrivals
-                    eta_str = it.get("eta")
-                    if eta_str:
-                        try:
-                            dt = datetime.fromisoformat(eta_str.replace("Z", "+00:00"))
-                            etas.append(dt.strftime("%H:%M HKT"))
-                        except Exception:
-                            etas.append(eta_str)
-                if etas:
-                    return etas
-        if attempt < retries:
-            time.sleep(0.3)
-    return None
-
-def get_arrival(route, stop_name):
-    """
-    Main function implementing steps 1-6.
-    """
-    # Step 1: validate inputs
-    try:
-        validate_route(route)
-        validate_stop_name(stop_name)
-    except ValueError as e:
-        print(f"Error: {e}")
+    # Validate route (alpha-numeric)
+    if not re.match(r'^[A-Za-z0-9]+$', route):
+        print(f"Error: Invalid route format: '{route_input}'")
         return
     
-    # Step 2: Get stop IDs for both directions (with retries)
-    out_stops = get_route_stops(route, "outbound", retries=2)
-    in_stops = get_route_stops(route, "inbound", retries=2)
+    # Validate stop name (string only)
+    if not isinstance(stop_name, str) or not stop_name.strip():
+        print("Error: Stop name must be a non-empty string.")
+        return
+    
+    stop_name_lower = stop_name.lower().strip()
+    
+    # Step 2: Get all stop IDs for both directions
+    def fetch_with_retry(url, max_retries=2):
+        for attempt in range(max_retries + 1):
+            data = fetch_json(url, retries=1, total_timeout=2)
+            if "error" not in data and "data" in data and data["data"]:
+                return data["data"]
+            if attempt < max_retries:
+                time.sleep(0.3)
+        return None
+    
+    out_stops = fetch_with_retry(f"{BASE}/route-stop/{route}/outbound/1", max_retries=2)
+    in_stops = fetch_with_retry(f"{BASE}/route-stop/{route}/inbound/1", max_retries=2)
+    
     if out_stops is None and in_stops is None:
         print(f"Failed to get stop data for route {route}. Please try again later.")
         return
     
+    # Find last stop IDs and names
+    def get_last_stop_info(stops):
+        if not stops:
+            return None, "Unknown"
+        last_stop_id = stops[-1]["stop"]  # 16-char stop ID
+        # Fetch stop name with retry
+        for _ in range(2):
+            stop_data = fetch_json(f"{BASE}/stop/{last_stop_id}", retries=1, total_timeout=2)
+            if "error" not in stop_data and "data" in stop_data and stop_data["data"]:
+                name_info = stop_data["data"]
+                name = name_info.get("name_en") or name_info.get("name_tc") or "Unknown"
+                return last_stop_id, name
+            time.sleep(0.2)
+        return last_stop_id, "Unknown"
+    
+    outbound_last_id, outbound_last_name = get_last_stop_info(out_stops)
+    inbound_last_id, inbound_last_name = get_last_stop_info(in_stops)
+    
     # Step 3: Get all bus stops (fresh copy)
-    all_stops = get_all_stops()
-    if not all_stops:
+    all_stops_data = fetch_json(f"{BASE}/route-stop", retries=2, total_timeout=3)
+    if "error" in all_stops_data or "data" not in all_stops_data:
         print("Failed to get bus stop data. Please try again later.")
         return
     
-    # Step 4: Find 16-char stop ID matching route and stop name
-    stop_id, in_outbound, in_inbound = find_stop_id_by_name_and_route(
-        all_stops, out_stops, in_stops, stop_name
-    )
-    if not stop_id:
-        print(f"Stop '{stop_name}' not found for route {route}. Please check route number and stop name.")
+    all_stops = all_stops_data["data"]  # List of all route-stop entries
+    
+    # Step 4: Find 16-char bus stop ID(s) matching route AND stop name
+    arg3 = []  # Dynamic array, max 2 elements
+    
+    for entry in all_stops:
+        if entry.get("route", "").upper() == route:  # Exact match except case
+            stop_id = entry.get("stop", "")
+            if len(stop_id) == 16:  # 16-character bus stop ID
+                # Need to get stop name to check against arg2
+                # We'll batch this later, for now collect candidate IDs
+                arg3.append(stop_id)
+    
+    # Now get stop names for candidate IDs (need to fetch from /stop/{stop_id})
+    # But we can also filter by checking if stop_id is in out_stops or in_stops
+    # and then fetch the name for those
+    
+    # Let's get unique stop IDs from route stops first
+    route_stop_ids = set()
+    if out_stops:
+        for s in out_stops:
+            route_stop_ids.add(s["stop"])
+    if in_stops:
+        for s in in_stops:
+            route_stop_ids.add(s["stop"])
+    
+    # For each route stop ID, fetch its name and check against stop_name
+    matching_stops = []
+    for stop_id in route_stop_ids:
+        for _ in range(2):
+            stop_data = fetch_json(f"{BASE}/stop/{stop_id}", retries=1, total_timeout=2)
+            if "error" not in stop_data and "data" in stop_data and stop_data["data"]:
+                info = stop_data["data"]
+                name_en = (info.get("name_en") or "").lower()
+                name_tc = (info.get("name_tc") or "").lower()
+                # Partial match for stop name
+                if stop_name_lower in name_en or stop_name_lower in name_tc:
+                    matching_stops.append(stop_id)
+                break
+            time.sleep(0.2)
+        if len(matching_stops) >= 2:
+            break
+    
+    if not matching_stops:
+        print(f"Stop '{stop_name}' not found for route {route}. Please double check the bus route number AND bus stop name.")
         return
     
-    # Step 5: Determine scenario (arg4)
-    if in_outbound and not in_inbound:
-        scenario = 0
-    elif in_inbound and not in_outbound:
-        scenario = 1
-    else:
-        scenario = 2
+    arg3 = matching_stops[:2]  # Max 2 elements
+    
+    # Step 5: Ensure arg3 elements are within the requested route
+    out_stop_ids = [s["stop"] for s in (out_stops or [])]
+    in_stop_ids = [s["stop"] for s in (in_stops or [])]
+    
+    valid_arg3 = []
+    for sid in arg3:
+        if sid in out_stop_ids or sid in in_stop_ids:
+            valid_arg3.append(sid)
+    
+    if not valid_arg3:
+        print(f"Stop ID(s) for '{stop_name}' not found in route {route}. Please double check the bus route number AND bus stop name.")
+        return
+    
+    arg3 = valid_arg3
+    
+    # Determine scenario (arg4)
+    in_outbound = any(sid in out_stop_ids for sid in arg3)
+    in_inbound = any(sid in in_stop_ids for sid in arg3)
+    
+    if len(arg3) == 1:
+        if arg3[0] in out_stop_ids:
+            arg4 = 0
+        else:
+            arg4 = 1
+    else:  # len(arg3) == 2
+        arg4 = 2
     
     # Step 6: Get ETA
-    hkt_time = get_hkt_now()
-    eta_result = get_eta(route, stop_id, retries=2)
+    arg5 = get_hkt_now()
     
-    if not eta_result:
+    def fetch_eta(stop_id, max_retries=2):
+        url = f"{BASE}/eta/{stop_id}/{route}/1"
+        for attempt in range(max_retries + 1):
+            data = fetch_json(url, retries=1, total_timeout=2)
+            if "error" not in data:
+                items = data if isinstance(data, list) else data.get("data", [])
+                if items:
+                    etas = []
+                    for it in items[:3]:  # Max 3 arrivals
+                        eta_str = it.get("eta")
+                        if eta_str:
+                            try:
+                                # Parse ISO format with timezone
+                                if '+' in eta_str:
+                                    time_part = eta_str.split('T')[1].split('+')[0][:5]
+                                elif 'Z' in eta_str:
+                                    dt = datetime.fromisoformat(eta_str.replace('Z', '+00:00'))
+                                    dt_hkt = dt.replace(tzinfo=None) + timedelta(hours=8)
+                                    time_part = dt_hkt.strftime('%H:%M')
+                                else:
+                                    time_part = eta_str.split('T')[1][:5] if 'T' in eta_str else eta_str[:5]
+                                etas.append(time_part + ' HKT')
+                            except Exception:
+                                etas.append(eta_str)
+                    if etas:
+                        return etas
+            if attempt < max_retries:
+                time.sleep(0.3)
+        return None
+    
+    # Fetch ETAs for all elements in arg3
+    etas_result = []
+    for sid in arg3:
+        eta = fetch_eta(sid, max_retries=2)
+        etas_result.append(eta)
+    
+    # Check if at least one succeeded
+    if all(e is None for e in etas_result):
         print(f"Failed to get ETA for route {route}. Please try again later.")
         return
     
-    # Get stop display name
-    stop_info = all_stops.get(stop_id, {})
-    stop_display = stop_info.get("name_en") or stop_info.get("name_tc", stop_name)
+    # Step 6a: Show answer according to arg4
+    # Get display stop name (use first matching stop)
+    display_name = stop_name
+    for _ in range(2):
+        stop_data = fetch_json(f"{BASE}/stop/{arg3[0]}", retries=1, total_timeout=2)
+        if "error" not in stop_data and "data" in stop_data and stop_data["data"]:
+            info = stop_data["data"]
+            display_name = info.get("name_en") or info.get("name_tc") or stop_name
+            break
+        time.sleep(0.2)
     
-    # Output according to scenario
-    if scenario == 0:
-        print(f"*{route} (Outbound)*\n")
-        print(f"Stop: *{stop_display}*\n")
+    if arg4 == 0:
+        print(f"*{route} (to {outbound_last_name})*\n")
+        print(f"Stop: *{display_name}*\n")
         print("Next arrivals:")
-        for t in eta_result:
-            print(f"- {t}")
-        print(f"\n(Current Time: {hkt_time})")
-    elif scenario == 1:
-        print(f"*{route} (Inbound)*\n")
-        print(f"Stop: *{stop_display}*\n")
+        if etas_result[0]:
+            for t in etas_result[0]:
+                print(f"- {t}")
+        print(f"\n(Current Time: {arg5})")
+    elif arg4 == 1:
+        print(f"*{route} (to {inbound_last_name})*\n")
+        print(f"Stop: *{display_name}*\n")
         print("Next arrivals:")
-        for t in eta_result:
-            print(f"- {t}")
-        print(f"\n(Current Time: {hkt_time})")
-    else:  # scenario == 2
-        # For both directions, we need to get ETAs for each direction separately
-        # Since we only have one stop_id, we assume it serves both directions
-        # The ETA response may contain both directions; we need to parse them.
-        # For simplicity, we'll show as "Both directions"
-        print(f"*{route} (Outbound & Inbound)*\n")
-        print(f"Stop: *{stop_display}*\n")
-        print("Next arrivals:")
-        for t in eta_result:
-            print(f"- {t}")
-        print(f"\n(Current Time: {hkt_time})")
+        if etas_result[0]:
+            for t in etas_result[0]:
+                print(f"- {t}")
+        print(f"\n(Current Time: {arg5})")
+    else:  # arg4 == 2
+        print(f"*{route} (to {outbound_last_name} / {inbound_last_name})*\n")
+        print(f"Stop: *{display_name}*\n")
+        # Find which is outbound and which is inbound
+        out_eta = None
+        in_eta = None
+        for i, sid in enumerate(arg3):
+            if sid in out_stop_ids:
+                out_eta = etas_result[i]
+            else:
+                in_eta = etas_result[i]
+        
+        if out_eta:
+            print(f"Next arrivals (to {outbound_last_name}):")
+            for t in out_eta:
+                print(f"- {t}")
+        if in_eta:
+            print(f"Next arrivals (to {inbound_last_name}):")
+            for t in in_eta:
+                print(f"- {t}")
+        print(f"\n(Current Time: {arg5})")
 
 def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Missing subcommand"}))
+    if len(sys.argv) < 4:
+        print("Usage: python3 kmb_bus.py getArrival <route> <stop_name>")
         return
+    
     cmd = sys.argv[1]
-    try:
-        if cmd == "getArrival":
-            if len(sys.argv) < 4:
-                raise ValueError("Usage: getArrival <route> <stop_name>")
-            get_arrival(sys.argv[2], " ".join(sys.argv[3:]))
-        elif cmd == "getRouteDirection":
-            # Keep old commands for compatibility
-            if len(sys.argv) < 3:
-                raise ValueError("Missing route")
-            # ... (existing implementation, omitted for brevity)
-        else:
-            print(f"Unknown command: {cmd}")
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    if cmd != "getArrival":
+        print(f"Unknown command: {cmd}")
+        return
+    
+    route = sys.argv[2]
+    stop_name = " ".join(sys.argv[3:])
+    
+    get_arrival(route, stop_name)
 
 if __name__ == "__main__":
     main()
